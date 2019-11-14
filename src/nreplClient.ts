@@ -52,6 +52,13 @@ interface nREPLCloseMessage {
     session?: string;
 }
 
+interface nREPLFnRefsMessage {
+    op: string;
+    sym: string;
+    ns: string;
+    session?: string;
+}
+
 const complete = (symbol: string, ns: string): Promise<any> => {
     const msg: nREPLCompleteMessage = { op: 'complete', symbol, ns };
     return send(msg).then(respObjs => respObjs[0]);
@@ -108,6 +115,18 @@ const listSessions = (): Promise<[string]> => {
         }
     });
 }
+
+const fnRefs = (symbol: string, ns: string, session?: string): Promise<any> => {
+    const msg: nREPLFnRefsMessage = { op: 'fn-refs', sym: symbol, ns, session };
+    return send(msg).then(respObjs => {
+        const response = respObjs[0];
+        if (response.status[0] == "done") {
+            return Promise.resolve(response["fn-refs"]);
+        } else {
+            return Promise.resolve([]);
+        };
+    });
+};
 
 type Message = TestMessage | nREPLCompleteMessage | nREPLInfoMessage | nREPLEvalMessage | nREPLStacktraceMessage | nREPLCloneMessage | nREPLCloseMessage | nREPLSingleEvalMessage;
 
@@ -172,5 +191,6 @@ export const nreplClient = {
     test,
     runTests,
     close,
-    listSessions
+    listSessions,
+    fnRefs
 };

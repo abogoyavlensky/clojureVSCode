@@ -4,6 +4,7 @@ import { CLOJURE_MODE } from './clojureMode';
 import { ClojureCompletionItemProvider } from './clojureSuggest';
 import { clojureEval, clojureEvalAndShowResult, testNamespace, runAllTests } from './clojureEval';
 import { ClojureDefinitionProvider } from './clojureDefinition';
+import { ClojureReferenceProvider } from './clojureReference';
 import { ClojureLanguageConfiguration } from './clojureConfiguration';
 import { ClojureHoverProvider } from './clojureHover';
 import { ClojureSignatureProvider } from './clojureSignature';
@@ -43,6 +44,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(vscode.languages.registerCompletionItemProvider(CLOJURE_MODE, new ClojureCompletionItemProvider(), '.', '/'));
     context.subscriptions.push(vscode.languages.registerDefinitionProvider(CLOJURE_MODE, new ClojureDefinitionProvider()));
+    context.subscriptions.push(vscode.languages.registerReferenceProvider(CLOJURE_MODE, new ClojureReferenceProvider()));
     context.subscriptions.push(vscode.languages.registerHoverProvider(CLOJURE_MODE, new ClojureHoverProvider()));
     context.subscriptions.push(vscode.languages.registerSignatureHelpProvider(CLOJURE_MODE, new ClojureSignatureProvider(), ' ', '\n'));
 
