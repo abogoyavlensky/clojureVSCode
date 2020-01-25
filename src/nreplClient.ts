@@ -29,7 +29,8 @@ interface nREPLEvalMessage {
     file: string;
     'file-path'?: string;
     session: string;
-    'nrepl.middleware.print/stream?'?: string;
+    'nrepl.middleware.print/stream?'?: number;
+    // 'nrepl.middleware.print/buffer-size'?: number;
 }
 
 interface nREPLSingleEvalMessage {
@@ -74,10 +75,11 @@ const evaluateFile = (code: string, filepath: string, session?: string): Promise
         file: code,
         'file-path': filepath,
         session: session_id,
-        // 'nrepl.middleware.print/stream?': 'true'
+        'nrepl.middleware.print/stream?': 1,
+        // 'nrepl.middleware.print/buffer-size': 2048,
     };
-    return send(msg);
-    // return sendEval(msg);
+    // return send(msg);
+    return sendEval(msg);
 });
 
 const stacktrace = (session: string): Promise<any> => send({ op: 'stacktrace', session: session });
@@ -211,23 +213,27 @@ const sendEval = (msg: Message, connection?: CljConnectionInformation): Promise<
             console.log('TIMEOUT');
         });
 
-        let nreplResp = Buffer.from('');
+        let nreplResp = Buffer.from(''),
+            lastIndex = 0;
         const respObjects: any[] = [];
-        const stack: any[] = [];
+        // const stack: any[] = [];
         client.on('data', data => {
             // console.log('DATA');
-            const res = bencodeUtil.decodeObjects(data).decodedObjects;
+            // const res = bencodeUtil.decodeObjects(data).decodedObjects;
             // console.log(res)
 
+            // console.log('JS BENCODE');
+            // console.log(ben.decode(data));
 
-            stack.push(...res)
-            console.log('STACK');
-            console.log(stack);
+            // stack.push(...res)
+            // console.log('STACK');
+            // console.log(stack);
 
-
-            // nreplResp = Buffer.concat([nreplResp, data]);
+            // TODO: uncomment!
+            nreplResp = Buffer.concat([nreplResp, data]);
             // const { decodedObjects, rest } = bencodeUtil.decodeObjects(nreplResp);
-            // nreplResp = rest;
+            const { decodedObjects, rest } = bencodeUtil.decodeBuffer(nreplResp);
+            nreplResp = rest;
 
             // const validDecodedObjects = decodedObjects.reduce((objs, obj) => {
             //     if (!isLastNreplObject(objs))
@@ -235,6 +241,8 @@ const sendEval = (msg: Message, connection?: CljConnectionInformation): Promise<
             //     return objs;
             // }, []);
             // respObjects.push(...validDecodedObjects);
+
+            respObjects.push(...decodedObjects);
 
             // console.log('RESULT')
             // console.log(respObjects);
@@ -245,11 +253,25 @@ const sendEval = (msg: Message, connection?: CljConnectionInformation): Promise<
             //     resolve(respObjects);
             // }
 
-            if (isLastNreplObject(stack)) {
+            // console.log("RESP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+
+            // const { decodedObjects, rest } = bencodeUtil.decodeObjects(nreplResp);
+            // console.log(decodedObjects);
+            // if (isLastNreplObjectSoft(respObjects)) {
+            //     client.end();
+            //     client.removeAllListeners();
+            //     resolve(respObjects);
+            // }
+
+            // if (isThereLastNreplObject(lastIndex, respObjects)) {
+            if (isLastNreplObjectSoft(respObjects)) {
                 client.end();
                 client.removeAllListeners();
-                resolve(stack);
+                resolve(respObjects);
             }
+            //  else {
+                // lastIndex = respObjects.length;
+            // }
 
         });
 
@@ -257,9 +279,21 @@ const sendEval = (msg: Message, connection?: CljConnectionInformation): Promise<
 };
 
 
+const isDone = (lastObj: any): boolean => {
+    return lastObj && lastObj.status && lastObj.status.indexOf('done') > -1;
+}
+
+const isThereLastNreplObject = (lastIndex: number, nreplObjects: any[]): boolean => {
+    for (let i = lastIndex; i < nreplObjects.length; i++) {
+        if (isDone(nreplObjects[i])) {
+            return true
+        }
+    }
+    return false;
+}
+
 
 const isLastNreplObjectSoft = (nreplObjects: any[]): boolean => {
-    // const lastObj = [...nreplObjects].pop();
     const lastObj = nreplObjects[nreplObjects.length - 1];
     return lastObj && lastObj.status && lastObj.status.indexOf('done') > -1;
 }
