@@ -75,7 +75,7 @@ const evaluateFile = (code: string, filepath: string, session?: string): Promise
         file: code,
         'file-path': filepath,
         session: session_id,
-        'nrepl.middleware.print/stream?': 1,
+        // 'nrepl.middleware.print/stream?': 1,
         // 'nrepl.middleware.print/buffer-size': 2048,
     };
     // return send(msg);

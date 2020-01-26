@@ -1,6 +1,5 @@
 import * as bencoder from 'bencoder';
 import * as vscode from 'vscode';
-// import * as ben from '@lemontv/bencode';
 
 const CONTINUATION_ERROR_MESSAGE: string = "Unexpected continuation: \"";
 
@@ -93,8 +92,26 @@ interface Message {
     msgLen: number;
 }
 
-const BENCODE_END_SYMBOL = 0x65;
-const VALUE_LENGTH_REGEXP = /\:value(?<len>\d+)\:/m;
+const BENCODE_END_SYMBOL = 0x65;  // `e`
+const VALUE_LENGTH_REGEXP = /\:(?<name>value|out)(?<len>\d+)\:/m;
+
+
+function isMessageIncomplete(message: Message): boolean {
+    const lastByte = message.buffer[message.buffer.length - 1],
+        matched = message.buffer.toString().match(VALUE_LENGTH_REGEXP),
+        // @ts-ignore: target es6 doesn't support `groups` in RegExpMatchArray
+        {groups: {len, name} = {}} = matched  || {},
+        requiredLength = len ? Number.parseInt(len) : null,
+        isLengthInvalid = name in message.msg
+            && requiredLength !== null
+            // check length of parsed message
+            && message.msg[name].length < requiredLength;
+
+    return message.msgLen === message.buffer.length  // whole buffer has been parsed
+        // message's length is valid and the end symbol is presented
+        && (isLengthInvalid || lastByte !== BENCODE_END_SYMBOL);
+}
+
 
 function decodeNextMessage(data: Buffer): Message {
     let message: Message = { msg: null, buffer: data, msgLen: data.length};
@@ -103,18 +120,7 @@ function decodeNextMessage(data: Buffer): Message {
         try {
             message.msg = bencoder.decode(message.buffer.slice(0, message.msgLen));
 
-            const lastByte = message.buffer[message.buffer.length - 1],
-                //   match = VALUE_LENGTH_REGEXP.exec(message.buffer.toString()),
-                  match = message.buffer.toString().match(VALUE_LENGTH_REGEXP),
-                  //   {groups: {len}} = match;
-                  //   @ts-ignore: target es2018 supports `groups`
-                  valueLength = match ? Number.parseInt(match.groups.len) : null;
-
-            // if (message.msgLen === message.buffer.length && lastByte !== 0x65) {
-            if (message.msgLen === message.buffer.length
-                    && valueLength
-                    && message.msg.value.length < valueLength
-                    || lastByte !== BENCODE_END_SYMBOL) {
+            if (isMessageIncomplete(message)) {
                 message.msg = null;
                 break;
             }
@@ -125,7 +131,7 @@ function decodeNextMessage(data: Buffer): Message {
                                                                            error.message.length - 1);
                 message.msgLen -= unexpectedContinuation.length;
             } else {
-                vscode.window.showErrorMessage('Unexpected decoding error.');
+                vscode.window.showErrorMessage('Unexpected output decoding error.');
                 console.log("UNCAUGHT ERROR!");
                 break;
             }
