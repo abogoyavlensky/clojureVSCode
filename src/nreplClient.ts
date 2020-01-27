@@ -29,8 +29,6 @@ interface nREPLEvalMessage {
     file: string;
     'file-path'?: string;
     session: string;
-    'nrepl.middleware.print/stream?'?: number;
-    // 'nrepl.middleware.print/buffer-size'?: number;
 }
 
 interface nREPLSingleEvalMessage {
@@ -75,11 +73,8 @@ const evaluateFile = (code: string, filepath: string, session?: string): Promise
         file: code,
         'file-path': filepath,
         session: session_id,
-        // 'nrepl.middleware.print/stream?': 1,
-        // 'nrepl.middleware.print/buffer-size': 2048,
     };
-    // return send(msg);
-    return sendEval(msg);
+    return send(msg);
 });
 
 const stacktrace = (session: string): Promise<any> => send({ op: 'stacktrace', session: session });
@@ -149,160 +144,19 @@ const send = (msg: Message, connection?: CljConnectionInformation): Promise<any[
         const respObjects: any[] = [];
         client.on('data', data => {
             nreplResp = Buffer.concat([nreplResp, data]);
-            const { decodedObjects, rest } = bencodeUtil.decodeObjects(nreplResp);
+            const { decodedObjects, rest, isDone } = bencodeUtil.decodeBuffer(nreplResp);
             nreplResp = rest;
-            const validDecodedObjects = decodedObjects.reduce((objs, obj) => {
-                if (!isLastNreplObject(objs))
-                    objs.push(obj);
-                return objs;
-            }, []);
-            respObjects.push(...validDecodedObjects);
-
-            if (isLastNreplObject(respObjects)) {
-                client.end();
-                client.removeAllListeners();
-                resolve(respObjects);
-            }
-        });
-    });
-};
-
-
-const sendEval = (msg: Message, connection?: CljConnectionInformation): Promise<any[]> => {
-
-    console.log("nREPL: Sending op", msg);
-
-    return new Promise<any[]>((resolve, reject) => {
-        connection = connection || cljConnection.getConnection();
-
-        if (!connection)
-            return reject('No connection found.');
-
-        const client = net.createConnection(connection.port, connection.host);
-
-        Object.keys(msg).forEach(key => (msg as any)[key] === undefined && delete (msg as any)[key]);
-        client.write(bencodeUtil.encode(msg), 'binary');
-
-        client.on('error', error => {
-            client.end();
-            client.removeAllListeners();
-            if ((error as any)['code'] === 'ECONNREFUSED') {
-                vscode.window.showErrorMessage('Connection refused.');
-                cljConnection.disconnect();
-            }
-            reject(error);
-        });
-
-
-        client.on('end', () => {
-            console.log("END STREAM");
-            // console.log(data);
-        });
-
-        client.on('finish', () => {
-            console.log("FINISH");
-            // console.log(data);
-        });
-
-        client.on('close', () => {
-            console.log('CLOSED');
-        });
-
-
-        client.on('timeout', () => {
-            console.log('TIMEOUT');
-        });
-
-        let nreplResp = Buffer.from(''),
-            lastIndex = 0;
-        const respObjects: any[] = [];
-        // const stack: any[] = [];
-        client.on('data', data => {
-            // console.log('DATA');
-            // const res = bencodeUtil.decodeObjects(data).decodedObjects;
-            // console.log(res)
-
-            // console.log('JS BENCODE');
-            // console.log(ben.decode(data));
-
-            // stack.push(...res)
-            // console.log('STACK');
-            // console.log(stack);
-
-            // TODO: uncomment!
-            nreplResp = Buffer.concat([nreplResp, data]);
-            // const { decodedObjects, rest } = bencodeUtil.decodeObjects(nreplResp);
-            const { decodedObjects, rest } = bencodeUtil.decodeBuffer(nreplResp);
-            nreplResp = rest;
-
-            // const validDecodedObjects = decodedObjects.reduce((objs, obj) => {
-            //     if (!isLastNreplObject(objs))
-            //         objs.push(obj);
-            //     return objs;
-            // }, []);
-            // respObjects.push(...validDecodedObjects);
-
             respObjects.push(...decodedObjects);
 
-            // console.log('RESULT')
-            // console.log(respObjects);
-
-            // if (isLastNreplObject(respObjects)) {
-            //     client.end();
-            //     client.removeAllListeners();
-            //     resolve(respObjects);
-            // }
-
-            // console.log("RESP!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-
-            // const { decodedObjects, rest } = bencodeUtil.decodeObjects(nreplResp);
-            // console.log(decodedObjects);
-            // if (isLastNreplObjectSoft(respObjects)) {
-            //     client.end();
-            //     client.removeAllListeners();
-            //     resolve(respObjects);
-            // }
-
-            // if (isThereLastNreplObject(lastIndex, respObjects)) {
-            if (isLastNreplObjectSoft(respObjects)) {
+            if (isDone) {
                 client.end();
                 client.removeAllListeners();
                 resolve(respObjects);
             }
-            //  else {
-                // lastIndex = respObjects.length;
-            // }
-
         });
-
     });
 };
 
-
-const isDone = (lastObj: any): boolean => {
-    return lastObj && lastObj.status && lastObj.status.indexOf('done') > -1;
-}
-
-const isThereLastNreplObject = (lastIndex: number, nreplObjects: any[]): boolean => {
-    for (let i = lastIndex; i < nreplObjects.length; i++) {
-        if (isDone(nreplObjects[i])) {
-            return true
-        }
-    }
-    return false;
-}
-
-
-const isLastNreplObjectSoft = (nreplObjects: any[]): boolean => {
-    const lastObj = nreplObjects[nreplObjects.length - 1];
-    return lastObj && lastObj.status && lastObj.status.indexOf('done') > -1;
-}
-
-
-const isLastNreplObject = (nreplObjects: any[]): boolean => {
-    const lastObj = [...nreplObjects].pop();
-    return lastObj && lastObj.status && lastObj.status.indexOf('done') > -1;
-}
 
 export const nreplClient = {
     complete,
