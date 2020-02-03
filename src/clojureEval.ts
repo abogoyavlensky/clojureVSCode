@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 
 import { cljConnection } from './cljConnection';
+import { LANGUAGE } from './clojureMode';
 import { cljParser } from './cljParser';
 import { nreplClient } from './nreplClient';
 import { TestListener } from './testRunner';
-import { annotationDecoration } from './clojureConfiguration';
 
 const HIGHLIGHTING_TIMEOUT = 350;
 const BLOCK_DECORATION_TYPE = vscode.window.createTextEditorDecorationType({
@@ -175,10 +175,15 @@ function evaluate(outputChannel: vscode.OutputChannel, showResults: boolean): vo
     }
 
     const selection = blockSelection || editor.selection;
-    let text = editor.document.getText();
+    let text = editor.document.getText(),
+        selectionEndLine: number;
+
     if (!selection.isEmpty) {
+        selectionEndLine = selection.end.line;
         const ns: string = cljParser.getNamespace(text);
         text = `(ns ${ns})\n${editor.document.getText(selection)}`;
+    } else {
+        selectionEndLine = editor.document.lineCount - 1;
     }
 
     cljConnection.sessionForFilename(editor.document.fileName).then(session => {
@@ -196,7 +201,7 @@ function evaluate(outputChannel: vscode.OutputChannel, showResults: boolean): vo
             if (!!respObjs[0].ex)
                 return handleError(outputChannel, selection, showResults, respObjs[0].session);
 
-            return handleSuccess(outputChannel, showResults, respObjs);
+            return handleSuccess(outputChannel, showResults, respObjs, selectionEndLine);
         })
     });
 }
@@ -238,8 +243,23 @@ function handleError(outputChannel: vscode.OutputChannel, selection: vscode.Sele
 
 const INLINE_RESULT_LENGTH = 150;
 const INLINE_RESULT_BACKGROUND = new vscode.ThemeColor('clojureVSCode.inlineResultBackground');
-const INLINE_RESULT_FOREGROUND = new vscode.ThemeColor('descriptionForeground');
+
+// TODO: decide which one to choose!
+const INLINE_RESULT_FOREGROUND = new vscode.ThemeColor('clojureVSCode.inlineResultForeground');
+// const INLINE_RESULT_FOREGROUND = new vscode.ThemeColor('descriptionForeground');
+
 const INLINE_ERROR_FOREGROUND = new vscode.ThemeColor('editorError.foreground');
+
+const annotationDecoration: vscode.TextEditorDecorationType = vscode.window.createTextEditorDecorationType({
+    before: {
+        // TODO: decide which one to choose!
+        // margin: '0 0 0 3em',
+        // margin: '0 0 0 2em',
+        margin: '0 0 0 1em',
+        textDecoration: 'none',
+    },
+    rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen
+});
 
 function truncateLine(value: string): string {
     if (value.length > INLINE_RESULT_LENGTH) {
@@ -248,15 +268,7 @@ function truncateLine(value: string): string {
     return value;
 }
 
-// const annotationDecoration: vscode.TextEditorDecorationType = vscode.window.createTextEditorDecorationType({
-//     after: {
-//         margin: '0 0 0 3em',
-//         textDecoration: 'none'
-//     },
-//     rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen
-// });
-
-function handleSuccess(outputChannel: vscode.OutputChannel, showResults: boolean, respObjs: any[]): void {
+function handleSuccess(outputChannel: vscode.OutputChannel, showResults: boolean, respObjs: any[], selectionEndLine: number): void {
     if (!showResults) {
         vscode.window.showInformationMessage('Successfully compiled');
     } else {
@@ -270,43 +282,40 @@ function handleSuccess(outputChannel: vscode.OutputChannel, showResults: boolean
             if (respObj.value)
                 outputChannel.appendLine(`=> ${respObj.value}`);
 
+            // TODO: move to function!
             if (config.showResultInline) {
 
                 let inlineResult = respObj.value || respObj.err;
                 let foregroundColor = respObj.value ? INLINE_RESULT_FOREGROUND : INLINE_ERROR_FOREGROUND;
 
                 if (inlineResult) {
+
                     // TODO: maybe only for error?!
                     inlineResult = inlineResult.replace(/\n/g, ' ');
 
                     let decoration = {
-                            renderOptions: {
-                                // after: {
-                                before: {
-                                    // TODO: move colors in settings as objects!
-                                    // color: new vscode.ThemeColor('gitlens.trailingLineForegroundColor'),
-                                    backgroundColor: INLINE_RESULT_BACKGROUND,
-                                    color: foregroundColor,
-                                    contentText: truncateLine(inlineResult),
-                                    fontWeight: 'normal',
-                                    fontStyle: 'normal',
-                                },
-                                after: {
-                                    contentText: '',
-                                }
-                            }
-                        } as vscode.DecorationOptions;
+                        renderOptions: {
+                            before: {
+                                backgroundColor: INLINE_RESULT_BACKGROUND,
+                                color: foregroundColor,
+                                contentText: truncateLine(inlineResult),
+                                fontWeight: 'normal',
+                                fontStyle: 'normal',
+                            },
+                        }
+                    } as vscode.DecorationOptions;
 
 
                     const editor = vscode.window.activeTextEditor;
                     if (editor) {
-                        const line = editor.selection.active.line;
                         decoration.range = editor.document.validateRange(
-                            new vscode.Range(line, Number.MAX_SAFE_INTEGER, line, Number.MAX_SAFE_INTEGER)
+                            new vscode.Range(
+                                selectionEndLine,
+                                Number.MAX_SAFE_INTEGER,
+                                selectionEndLine,
+                                Number.MAX_SAFE_INTEGER)
                         );
 
-                        // editor.setDecorations(annotationDecoration, []);
-                        // editor.setDecorations
                         editor.setDecorations(annotationDecoration, [decoration]);
                     }
                 }
@@ -317,4 +326,14 @@ function handleSuccess(outputChannel: vscode.OutputChannel, showResults: boolean
         });
     }
     nreplClient.close(respObjs[0].session);
+};
+
+export function clearInlineResultDecorationOnMove(event: vscode.TextEditorSelectionChangeEvent) {
+    const config = vscode.workspace.getConfiguration('clojureVSCode');
+    if (config.showResultInline
+        && event.textEditor.document.languageId === LANGUAGE
+        && event.textEditor === vscode.window.activeTextEditor) {
+
+        event.textEditor.setDecorations(annotationDecoration, []);
+    }
 }
