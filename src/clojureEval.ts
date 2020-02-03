@@ -4,6 +4,7 @@ import { cljConnection } from './cljConnection';
 import { cljParser } from './cljParser';
 import { nreplClient } from './nreplClient';
 import { TestListener } from './testRunner';
+import { annotationDecoration } from './clojureConfiguration';
 
 const HIGHLIGHTING_TIMEOUT = 350;
 const BLOCK_DECORATION_TYPE = vscode.window.createTextEditorDecorationType({
@@ -235,10 +236,32 @@ function handleError(outputChannel: vscode.OutputChannel, selection: vscode.Sele
         });
 }
 
+const INLINE_RESULT_LENGTH = 150;
+const INLINE_RESULT_BACKGROUND = new vscode.ThemeColor('clojureVSCode.inlineResultBackground');
+const INLINE_RESULT_FOREGROUND = new vscode.ThemeColor('descriptionForeground');
+const INLINE_ERROR_FOREGROUND = new vscode.ThemeColor('editorError.foreground');
+
+function truncateLine(value: string): string {
+    if (value.length > INLINE_RESULT_LENGTH) {
+        return value.substring(0, INLINE_RESULT_LENGTH) + '...'
+    }
+    return value;
+}
+
+// const annotationDecoration: vscode.TextEditorDecorationType = vscode.window.createTextEditorDecorationType({
+//     after: {
+//         margin: '0 0 0 3em',
+//         textDecoration: 'none'
+//     },
+//     rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen
+// });
+
 function handleSuccess(outputChannel: vscode.OutputChannel, showResults: boolean, respObjs: any[]): void {
     if (!showResults) {
         vscode.window.showInformationMessage('Successfully compiled');
     } else {
+        const config = vscode.workspace.getConfiguration('clojureVSCode');
+
         respObjs.forEach(respObj => {
             if (respObj.out)
                 outputChannel.append(respObj.out);
@@ -246,7 +269,51 @@ function handleSuccess(outputChannel: vscode.OutputChannel, showResults: boolean
                 outputChannel.append(respObj.err);
             if (respObj.value)
                 outputChannel.appendLine(`=> ${respObj.value}`);
-            outputChannel.show(true);
+
+            if (config.showResultInline) {
+
+                let inlineResult = respObj.value || respObj.err;
+                let foregroundColor = respObj.value ? INLINE_RESULT_FOREGROUND : INLINE_ERROR_FOREGROUND;
+
+                if (inlineResult) {
+                    // TODO: maybe only for error?!
+                    inlineResult = inlineResult.replace(/\n/g, ' ');
+
+                    let decoration = {
+                            renderOptions: {
+                                // after: {
+                                before: {
+                                    // TODO: move colors in settings as objects!
+                                    // color: new vscode.ThemeColor('gitlens.trailingLineForegroundColor'),
+                                    backgroundColor: INLINE_RESULT_BACKGROUND,
+                                    color: foregroundColor,
+                                    contentText: truncateLine(inlineResult),
+                                    fontWeight: 'normal',
+                                    fontStyle: 'normal',
+                                },
+                                after: {
+                                    contentText: '',
+                                }
+                            }
+                        } as vscode.DecorationOptions;
+
+
+                    const editor = vscode.window.activeTextEditor;
+                    if (editor) {
+                        const line = editor.selection.active.line;
+                        decoration.range = editor.document.validateRange(
+                            new vscode.Range(line, Number.MAX_SAFE_INTEGER, line, Number.MAX_SAFE_INTEGER)
+                        );
+
+                        // editor.setDecorations(annotationDecoration, []);
+                        // editor.setDecorations
+                        editor.setDecorations(annotationDecoration, [decoration]);
+                    }
+                }
+            } else {
+                outputChannel.show(true);
+            };
+
         });
     }
     nreplClient.close(respObjs[0].session);

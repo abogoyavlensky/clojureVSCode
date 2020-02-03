@@ -4,7 +4,7 @@ import { CLOJURE_MODE, LANGUAGE } from './clojureMode';
 import { ClojureCompletionItemProvider } from './clojureSuggest';
 import { clojureEval, clojureEvalAndShowResult, testNamespace, runAllTests } from './clojureEval';
 import { ClojureDefinitionProvider } from './clojureDefinition';
-import { ClojureLanguageConfiguration } from './clojureConfiguration';
+import { ClojureLanguageConfiguration, annotationDecoration } from './clojureConfiguration';
 import { ClojureHoverProvider } from './clojureHover';
 import { ClojureSignatureProvider } from './clojureSignature';
 import { JarContentProvider } from './jarContentProvider';
@@ -48,6 +48,22 @@ export function activate(context: vscode.ExtensionContext) {
 
     vscode.workspace.registerTextDocumentContentProvider('jar', new JarContentProvider());
     vscode.languages.setLanguageConfiguration(LANGUAGE, ClojureLanguageConfiguration);
+
+
+    // TODO: move to common!
+    // if (config.showResultInline) {
+        vscode.window.onDidChangeTextEditorSelection(event => {
+            // TODO: check  active editor
+            // if (event.textEditor === vscode.window.activeTextEditor && (event.textEditor.document.languageId !== "clojure"))
+            // if (event.textEditor.document.languageId === LANGUAGE) {
+                const config = vscode.workspace.getConfiguration('clojureVSCode');
+                if (config.showResultInline) {
+                    event.textEditor.setDecorations(annotationDecoration, []);
+                }
+            // }
+        }, null, context.subscriptions);
+    // }
+
 }
 
 export function deactivate() { }

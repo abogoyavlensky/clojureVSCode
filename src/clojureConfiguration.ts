@@ -70,3 +70,13 @@ export const ClojureLanguageConfiguration : vscode.LanguageConfiguration = {
         increaseIndentPattern: /^\s*\(.*[^)]\s*$/
     }
 }
+
+// TODO: move to `clojureEval.clj`
+export const annotationDecoration: vscode.TextEditorDecorationType = vscode.window.createTextEditorDecorationType({
+    // after: {
+    before: {
+        margin: '0 0 0 3em',
+        textDecoration: 'none',
+    },
+    rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen
+});
